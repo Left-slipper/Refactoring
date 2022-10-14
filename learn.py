@@ -1,61 +1,83 @@
-from copy import copy
-from glob import glob
-from posixpath import split
-import threading
-from time import sleep
 import cv2 as cv
 import numpy as np
 import os
-from matplotlib import pyplot as plt
-import json, codecs
-
-path_to_vector = "OR_vector/"
-path_to_gradient = "OR_gradient/"
-path_to_gistagram = "OR_gistagram/"
+import json
+import uuid
+from PIL import Image
 
 
-def clearFilesForFolder(path):
-    for file in glob(path):
-        os.remove(file)
-                
+class Learning(object):
+    
+    __path_to_save = "Polus/data/" # базовый путь всех дескриптеров и других файлов
+    __path_to_image_for_learn = "Polus/image/"
+    _topic = "default/"
+    descriptors = [] # список дескриптеров  
+    names = [] # список имен существующих изображений
+    unicode = [] # список юникодов дескриптеров   
+    
+    def descriptorLearning(self, pathForLearn: str = None, topic: str = None) -> list:
         
-
-def calcDescripters(image, format):
-    global path_to_vector
-    
-    image = cv.resize(image, dsize=[265, 325])
-    image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)  
-    image = cv.GaussianBlur(image, (5,5), 0)
-    cv.imwrite("Photo/" + str(format[0] + ".jpg"), image)
-
-    orb = cv.ORB_create()
-    
-    # Найти ключевые моменты
-    kp = orb.detect(image, None)
-    
-    # вычисление дескрипторов
-    kp, des = orb.compute(image, kp)
+        """
+        pathForLearn: откуда загружаются изображения
+        topic: тема папки куда сохраняются файлы
+        
+        """        
+        if(pathForLearn is not None):
+            if(topic is not None):
+                self._topic = topic
+                return self.__loopForLearn(pathForLearn, topic)
+            else:
+                return self.__loopForLearn(pathForLearn, self._topic)
+        else:
+            if(topic is not None):
+                self._topic = topic
+                return self.__loopForLearn(self.__path_to_image_for_learn, topic) 
+            else:
+                return self.__loopForLearn(self.__path_to_image_for_learn, self._topic) 
             
-    with open(path_to_vector + str(format[0]) + ".json", 'w',  encoding='utf-8') as fw:
-        json.dump(des.tolist(), fw)
+    def __loopForLearn(self, pathForLearn: str, topic: str):
         
-
-def getDataForImage(img, filename):
-    global path_to_vector, path_to_gradient, path_to_gistagram
-
-    # Инициация орб
+            pathTolearn = (self.__path_to_save + topic)
+            pathToDes = (pathTolearn + "/" + "descript/")
+            pathToName = (pathTolearn + "/" + "names/")
+            pathToImage = (pathTolearn + "/" + "image/")       
+            os.mkdir(pathTolearn)         
+            os.mkdir(pathToDes)         
+            os.mkdir(pathToName)         
+            os.mkdir(pathToImage)         
+            
+            for filename in os.listdir(pathForLearn):
+                img = cv.imdecode(np.fromfile(os.path.join(pathForLearn, filename), dtype=np.uint8), cv.IMREAD_COLOR)
+                
+                self.unicode.append(str(uuid.uuid4()).split("-")[-1])
+                
+                if img is not None:
+                    self.descriptors.append(self.__learnDescripters(img, pathToDes, self.unicode[-1]))  
+                    self.names.append(filename.split(".")[0])
+                    
+                    with open(pathToName + self.unicode[-1] + ".json", 'w',  encoding='utf-8') as fw:
+                        json.dump(self.names[-1], fw)
+                        
+                    cv.imwrite(pathToImage + self.unicode[-1] + ".jpg", img)
+                    
+                    
+            return self.descriptors, self.names
     
-    format = filename.split(".")
-
-    threading.Thread(target= lambda:  calcDescripters(img, format), name='R').start()
-
-
-path = "image3/"
-for filename in os.listdir(path):   
-    img = cv.imdecode(np.fromfile(os.path.join(path, filename), dtype=np.uint8), cv.IMREAD_COLOR)      
-       
-    if img is not None:
-        getDataForImage(img, filename)
-
-
-cv.destroyAllWindows()
+    def __learnDescripters(self, image: Image, path_to_vector: str, name: str) -> list:
+        
+        image = cv.resize(image, dsize=[265, 325])
+        image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)  
+        image = cv.GaussianBlur(image, (5,5), 0)
+        
+        orb = cv.ORB_create()
+        
+        # Найти ключевые моменты
+        kp = orb.detect(image, None)
+        
+        # вычисление дескрипторов
+        kp, des = orb.compute(image, kp)
+        
+        with open(path_to_vector + name + ".json", 'w',  encoding='utf-8') as fw:
+            json.dump(des.tolist(), fw)
+        
+        return des.tolist()
